@@ -1,0 +1,685 @@
+---
+title: "6306 Project 2"
+author: "Yichien Chou"
+date: "11/30/2020"
+output: html_document
+---
+
+#Data Description
+
+There were three data sets we used in this project.
+
+*yellow*: Jan 2020 - June 2020, Jan 2009 - June 2009
+
+*green*: Jan 2020 - June 2020
+
+*fhv*: Jan 2020 - June 2020
+
+The data was provided by [New York City Taxi and Limousine Commission](https://www1.nyc.gov/site/tlc/about/tlc-trip-record-data.page)
+
+#Data Preprocessing
+
+```{r, eval=FALSE}
+###Data Preprocessing###
+#username and password are"hadoop"
+
+##Required packages##
+install.packages("sparklyr")
+install.packages("tidyverse")
+install.packages("ggplot2")
+library(sparklyr)
+library(tidyverse)
+library(ggplot2)
+require(scales)
+
+# Start a Spark connection
+
+config <- spark_config()                            # Create a config to tune memory
+config[["sparklyr.shell.driver-memory"]] <- "10G"   # Set driver memory to 10GB
+
+sc <- spark_connect(master = "yarn",               # Connect to the AWS Cluster
+                    config = config,
+                    spark_home = "/usr/lib/spark")  # This is where AWS puts the Spark Code
+
+###Read data###
+#1. Yellow
+yellow_1 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/yellow_tripdata_2020-01.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_2 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/yellow_tripdata_2020-02.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_3 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/yellow_tripdata_2020-03.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_4 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/yellow_tripdata_2020-04.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_5 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/yellow_tripdata_2020-05.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_6 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/yellow_tripdata_2020-06.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+
+
+#2. Green
+green_1 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/green_tripdata_2020-01.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+green_2 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/green_tripdata_2020-02.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+green_3 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/green_tripdata_2020-03.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+green_4 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/green_tripdata_2020-04.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+green_5 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/green_tripdata_2020-05.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+green_6 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/green_tripdata_2020-06.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+
+#3. fhv
+fhv_1 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/fhv_tripdata_2020-01.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+fhv_2 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/fhv_tripdata_2020-02.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+fhv_3 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/fhv_tripdata_2020-03.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+fhv_4 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/fhv_tripdata_2020-04.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+fhv_5 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/fhv_tripdata_2020-05.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+fhv_6 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/fhv_tripdata_2020-06.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+
+###Combine data set###
+yellow_2020 <- sdf_bind_rows(yellow_1,yellow_2,yellow_3, yellow_4, yellow_5, yellow_6)
+sdf_dim(yellow_2020) #16847778       18
+
+green_2020 <- sdf_bind_rows(green_1,green_2,green_3, green_4, green_5, green_6)
+sdf_dim(green_2020) #1225889      20
+
+fhv_2020 <- sdf_bind_rows(fhv_1,fhv_2,fhv_3, fhv_4, fhv_5, fhv_6)
+sdf_dim(fhv_2020) #5251137       6
+
+#extract time
+
+fhv_2020 = fhv_2020 %>% mutate(month = month(to_date(pickup_datetime, "yyyy/MM/dd")))
+
+sdf_describe(yellow_2020)
+sdf_describe(green_2020)
+sdf_describe(fhv_2020)
+
+#remove columns
+yellow_2020 = select(yellow_2020, -congestion_surcharge)
+green_2020 = select(green_2020, -c(ehail_fee, trip_type, congestion_surcharge))
+
+#rename columns
+yellow_2020 = yellow_2020 %>% rename(pep_pickup_datetime = tpep_pickup_datetime)
+yellow_2020 = yellow_2020 %>% rename(pep_dropoff_datetime = tpep_dropoff_datetime)
+
+green_2020 = green_2020 %>% rename(pep_pickup_datetime = lpep_pickup_datetime)
+green_2020 = green_2020 %>% rename(pep_dropoff_datetime = lpep_dropoff_datetime)
+
+#add a new column: cab
+
+yellow_2020 = yellow_2020 %>% mutate(cab = "yellow")
+green_2020 = green_2020 %>% mutate(cab = "green")
+
+#Merge yellow_2020 and green_2020
+
+cabs <- sdf_bind_rows(yellow_2020, green_2020)
+sdf_dim(cabs)  #18073667       18
+sdf_describe(cabs)
+
+#extract time
+
+cabs = cabs %>% mutate(date = to_date(pep_pickup_datetime, "yyyy/MM/dd"))
+
+cabs = cabs %>% mutate(month = month(to_date(pep_pickup_datetime, "yyyy/MM/dd")))
+
+cabs = cabs %>% filter(month<7)
+
+###Read data 2009###
+yellow_1 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2009/yellow_tripdata_2009-01.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_2 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2009/yellow_tripdata_2009-02.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_3 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2009/yellow_tripdata_2009-03.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_4 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2009/yellow_tripdata_2009-04.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_5 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2009/yellow_tripdata_2009-05.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_6 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2009/yellow_tripdata_2009-06.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+
+#Add month
+yellow_1= yellow_1 %>% mutate(month = 1, year = 2009)
+yellow_2= yellow_2 %>% mutate(month = 2, year = 2009)
+yellow_3= yellow_3 %>% mutate(month = 3, year = 2009)
+yellow_4= yellow_1 %>% mutate(month = 4, year = 2009)
+yellow_5= yellow_1 %>% mutate(month = 5, year = 2009)
+yellow_6= yellow_1 %>% mutate(month = 6, year = 2009)
+
+###Combine data 2009###
+yellow_2009 <- sdf_bind_rows(yellow_1,yellow_2,yellow_3, yellow_4, yellow_5, yellow_6)
+```
+
+##Question A
+
+```{r, eval=FALSE}
+###Question A###
+#The first case of COVID-19 in New York during the pandemic
+#was confirmed on March 3, 2020
+#COVID-19 erupted at the end of March
+
+cabs = cabs %>% mutate(COVID = ifelse((month <4 ),"Before","After")) 
+
+#By month
+a.1 = cabs %>% 
+  group_by(month) %>%
+  summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq))
+
+#bar plot of number of taxi trip
+ggplot(a.1, aes(x = as.factor(month), y = Freq, fill = as.factor(month))) +
+  geom_bar(stat = "identity") +
+  theme(panel.background = element_rect(fill = "white", colour = "grey50")) +
+  labs(x = "Month", y = "Number of taxi trip") +
+  scale_fill_discrete(name = "Month", labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun"))
+
+#total_amount
+a.2 = cabs %>% 
+  group_by(COVID) %>%
+  summarise(average_total_amount = sum(total_amount)) 
+
+Percentage = c(0.2374, 0.7626)
+
+#bar plot of total amount
+ggplot(a.2, aes(x = factor(COVID, level = c("Before", "After")), y = average_total_amount, fill = COVID)) +
+  geom_bar(stat = "identity") +
+  theme(panel.background = element_rect(fill = "white", colour = "grey50")) +
+  labs(x = "COVID-19 pandemic", y = "The total amount charged to passengers(USD)") +
+  geom_text(aes(label=Percentage),vjust = -.4) +
+  scale_y_continuous(labels = comma) +
+  scale_fill_discrete(name = "COVID-19 pandemic", labels = c("Before(2020/1/1-2020/3/31)", "After(2020/4/1-2020/6/30)"))
+
+#payment type (Cash or Credit)
+a.3.1 = cabs %>% 
+  filter(COVID == "Before") %>% 
+  filter(payment_type == "1"| payment_type == "2") %>% 
+  group_by(COVID, payment_type) %>%
+  summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq))
+
+a.3.2 = cabs %>% 
+  filter(COVID == "After") %>% 
+  filter(payment_type == "1"| payment_type == "2") %>% 
+  group_by(COVID, payment_type) %>%
+  summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq))
+
+#pie chart of payment type(Before COVID-19)
+ggplot(a.3.1, aes(x = "", y = Freq)) +
+  geom_bar(stat = "identity", width = 1, aes(fill = as.factor(payment_type))) +
+  coord_polar("y", start = 0) +
+  geom_text(aes(label = round(PERCENT,2)), position = position_stack(vjust=0.5),size =5) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank()) +
+  scale_fill_discrete(name = "Payment Type", 
+                      labels = c("Credit card", "Cash")) +
+  ggtitle("Before COVID-19 pandemic")
+
+#pie chart of payment type(After COVID-19)
+ggplot(a.3.2, aes(x = "", y = Freq)) +
+  geom_bar(stat = "identity", width = 1, aes(fill = as.factor(payment_type))) +
+  coord_polar("y", start = 0) +
+  geom_text(aes(label = round(PERCENT,2)), position = position_stack(vjust=0.5),size =5) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank()) +
+  scale_fill_discrete(name = "Payment Type", 
+                      labels = c("Credit card", "Cash")) +
+  ggtitle("After COVID-19 pandemic")
+
+#By trip distance
+a.4 = cabs %>% 
+  group_by(COVID) %>%
+  summarise(average_trip_distance = mean(trip_distance))
+
+mile = c(8.91, 3.40)
+
+#bar plot of total amount
+ggplot(a.4, aes(x = factor(COVID, level = c("Before", "After")), y = average_trip_distance, fill = COVID)) +
+  geom_bar(stat = "identity") +
+  theme(panel.background = element_rect(fill = "white", colour = "grey50")) +
+  labs(x = "COVID-19 pandemic", y = "The average trip distance (miles)") +
+  geom_text(aes(label=mile),vjust = -.4) +
+  scale_y_continuous(labels = comma) +
+  scale_fill_discrete(name = "COVID-19 pandemic", labels = c("Before(2020/1/1-2020/3/31)", "After(2020/4/1-2020/6/30)"))
+
+#By number of passengers
+a.5 = cabs %>% 
+  group_by(COVID) %>%
+  summarise(average_passenger_count = mean(passenger_count))
+
+passenger = c(1.32, 1.48)
+
+ggplot(a.5, aes(x = factor(COVID, level = c("Before", "After")), y = average_passenger_count, fill = COVID)) +
+  geom_bar(stat = "identity") +
+  theme(panel.background = element_rect(fill = "white", colour = "grey50")) +
+  labs(x = "COVID-19 pandemic", y = "The number of passengers in the vehicle") +
+  geom_text(aes(label=passenger),vjust = -.4) +
+  scale_y_continuous(labels = comma) +
+  scale_fill_discrete(name = "COVID-19 pandemic", labels = c("Before(2020/1/1-2020/3/31)", "After(2020/4/1-2020/6/30)"))
+```
+
+##Question B
+
+```{r, eval=FALSE}
+###Question B###
+sdf_dim(yellow_2009) #84137145       20
+
+sdf_describe(yellow_2009)
+
+##1. obs
+#by month
+b.1 = yellow_2009 %>% 
+  group_by(month) %>% summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq))
+
+#bar plot of number of taxi trip
+ggplot(b.1, aes(x = as.factor(month), y = Freq, fill = as.factor(month))) +
+  geom_bar(stat = "identity") +
+  theme(panel.background = element_rect(fill = "white", colour = "grey50")) +
+  labs(x = "Month", y = "Number of taxi trip") +
+  scale_y_continuous(labels = comma) +
+  scale_fill_discrete(name = "Month", labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun")) +
+  ggtitle("Number of taxi trip in 2009")
+
+#total
+yellow_2009 %>% 
+  summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq)) #84,137,145 in 2009 (Jan-June)
+yellow_2020 %>% 
+  summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq)) #4,281,849 in 2020 (Jan-June)
+
+##2. Taxi income without tips
+yellow_2009 %>% 
+  summarise(average_total_amount = sum(Total_Amt)) #873,063,733
+
+yellow_2009 %>% 
+  summarise(average_total_amount = mean(Total_Amt)) #10.4
+
+yellow_2020 %>% 
+  summarise(average_total_amount = sum(total_amount)) #80,065,109
+
+yellow_2020 %>% 
+  summarise(average_total_amount = mean(total_amount)) #18.7
+
+##3. Payment Type
+#total
+yellow_2009 %>% 
+  group_by(Payment_Type) %>% summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq))
+#Credit: 21.1%, CASH: 42.3%
+yellow_2020 %>% 
+  group_by(payment_type) %>% summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq))
+#Credit: 68.6%, CASH: 27.3%
+
+##4. trip distance
+yellow_2009 %>% summarise(annual_average_Trip_Distance = mean(Trip_Distance)) #2.59
+
+yellow_2020 %>% summarise(annual_average_Trip_Distance = mean(trip_distance)) #3.57
+```
+
+##Question C
+
+```{r, eval=FALSE}
+###Question C###
+
+sdf_describe(fhv_2020)
+
+##obs
+#by month
+c.1.1 = fhv_2020 %>% 
+  group_by(month) %>% summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq))
+c.1.2 = cabs %>% 
+  group_by(month) %>% summarise(Freq=n()) %>% mutate(PERCENT = 100*Freq/sum(Freq))
+
+#bar plot of number of taxi trip
+ggplot(c.1.1, aes(x = as.factor(month), y = Freq, fill = as.factor(month))) +
+  geom_bar(stat = "identity") +
+  theme(panel.background = element_rect(fill = "white", colour = "grey50")) +
+  labs(x = "Month", y = "Number of taxi trip") +
+  scale_y_continuous(labels = comma) +
+  scale_fill_discrete(name = "Month", labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun")) +
+  ggtitle("For-hire companies in 2020")
+
+ggplot(c.1.2, aes(x = as.factor(month), y = Freq, fill = as.factor(month))) +
+  geom_bar(stat = "identity") +
+  theme(panel.background = element_rect(fill = "white", colour = "grey50")) +
+  labs(x = "Month", y = "Number of taxi trip") +
+  scale_y_continuous(labels = comma) +
+  scale_fill_discrete(name = "Month", labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun")) +
+  ggtitle("Cabs companies in 2020")
+
+#total
+fhv_2020 %>% 
+  summarise(Freq=n()) #5,251,137 
+cabs %>% 
+  summarise(Freq=n()) #5,507,564
+
+c.2 = data.frame(type = c("Cabs Companies", "For-hire Companies"),
+                 freq = c(5507564, 5251137),
+                 pct = c(51.19,48.81))
+  
+#pie chart of total number of trips
+ggplot(c.2, aes(x = "", y = freq)) +
+  geom_bar(stat = "identity", width = 1, aes(fill = type)) +
+  coord_polar("y", start = 0) +
+  geom_text(aes(label = pct), position = position_stack(vjust=0.5),size =5) +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank()) +
+  scale_fill_discrete(name = "Company Type") +
+  ggtitle("Proportion of Company Type in 2020")
+```
+
+#Prediction: Classification
+
+```{r, eval=FALSE}
+## read all test data files in the S3 Bucket - Green Test Student
+# 2015 November
+Green_Test1 = spark_read_csv(sc, path = "s3://stat6306project/Green Test Student/TaxiTest2015G_WO_df.csv", 
+                              infer_schema = TRUE, header = TRUE, repartition = 100)
+sdf_dim(Green_Test1)  # 76323 obs and 21 cols
+#colnames(Green_Test1)
+
+# 2017 April
+Green_Test2 = spark_read_csv(sc, path = "s3://stat6306project/Green Test Student/TaxiTest2017G_WO_df.csv", 
+                              infer_schema = TRUE, header = TRUE, repartition = 100)
+sdf_dim(Green_Test2)  # 53967 obs and 19 cols
+#colnames(Green_Test2)
+
+# 2019 June
+Green_Test3 = spark_read_csv(sc, path = "s3://stat6306project/Green Test Student/TaxiTest2019G_WO_df.csv", 
+                              infer_schema = TRUE, header = TRUE, repartition = 100)
+sdf_dim(Green_Test3)  # 23395 obs and 20 cols
+#colnames(Green_Test3)
+
+# 2020 May
+Green_Test4 = spark_read_csv(sc, path = "s3://stat6306project/Green Test Student/TaxiTest2020G_WO_df.csv", 
+                              infer_schema = TRUE, header = TRUE, repartition = 100)
+sdf_dim(Green_Test4)  # 15540 obs and 20 cols
+#colnames(Green_Test4)
+
+## Since these 4 data have different variable features, we first subset the data by selecting 14
+## common features that contain in all 4 datasets, and renames variable names. Finally, we merge into 
+## one dataset.
+
+# select 14 useful variables in Green_Test1
+Green_Test1_new <- Green_Test1 %>% select(ID,VendorID,Store_and_fwd_flag,RateCodeID,
+                                           Passenger_count,Trip_distance,Fare_amount,Extra,MTA_tax,Tip_amount,
+                                           Tolls_amount,Ehail_fee,improvement_surcharge,Trip_type)
+
+# select 14 useful variables in Green_Test2
+Green_Test2_new <- Green_Test2 %>% select(ID,VendorID,store_and_fwd_flag,RatecodeID,
+                                           passenger_count,trip_distance,fare_amount,extra,mta_tax,tip_amount,
+                                           tolls_amount,ehail_fee,improvement_surcharge,trip_type)
+
+# select 14 useful variables in Green_Test3
+Green_Test3_new <- Green_Test3 %>% select(ID,VendorID,store_and_fwd_flag,RatecodeID,
+                                           passenger_count,trip_distance,fare_amount,extra,mta_tax,tip_amount,
+                                           tolls_amount,ehail_fee,improvement_surcharge,trip_type)
+
+# select 14 useful variables in Green_Test4
+Green_Test4_new <- Green_Test4 %>% select(ID,VendorID,store_and_fwd_flag,RatecodeID,
+                                           passenger_count,trip_distance,fare_amount,extra,mta_tax,tip_amount,
+                                           tolls_amount,ehail_fee,improvement_surcharge,trip_type)
+
+# rename variable names in all datasets to make consistent, Green_Test2_new, Green_Test3_new, and Green_Test4_new are same
+# we only change variable names in Green_Test1_new
+Green_Test1_new = dplyr::rename(Green_Test1_new,store_and_fwd_flag=Store_and_fwd_flag,passenger_count=Passenger_count,trip_distance=Trip_distance,fare_amount=Fare_amount,extra=Extra,mta_tax=MTA_tax,tip_amount=Tip_amount,tolls_amount=Tolls_amount,ehail_fee=Ehail_fee,trip_type=Trip_type)
+
+## Finally, merge these four datasets
+green_test <- sdf_bind_rows(Green_Test1_new,Green_Test2_new,Green_Test3_new, Green_Test4_new)
+sdf_dim(green_test)  # 169225 obs and 14 cols
+# We will use this dataset later.
+
+### According to above test dataset, we select four relative datasets to perform classification methods
+green_pred1 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/green_tripdata_2015-11.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+green_pred2 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/green_tripdata_2017-04.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+green_pred3 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/green_tripdata_2019-06.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+green_pred4 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/green_2020.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+
+## Similarly, since these 4 data have different variable features, we first subset the data by selecting 15
+## common features that contain in all 4 datasets, and renames variable names. Finally, we merge into 
+## one dataset.
+# select 13 useful variables in green_pred1
+Green_pred1_new <- green_pred1 %>% select(VendorID,Store_and_fwd_flag,RateCodeID,
+                                          Passenger_count,Trip_distance,Fare_amount,Extra,MTA_tax,Tip_amount,
+                                          Tolls_amount,improvement_surcharge,Total_amount, Payment_type)
+
+# select 13 useful variables in green_pred2
+Green_pred2_new <- green_pred2 %>% select(VendorID,store_and_fwd_flag,RatecodeID,
+                                          passenger_count,trip_distance,fare_amount,extra,mta_tax,tip_amount,
+                                          tolls_amount,improvement_surcharge,total_amount, payment_type)
+
+# select 13 useful variables in green_pred3
+Green_pred3_new <- green_pred3 %>% select(VendorID,store_and_fwd_flag,RatecodeID,
+                                          passenger_count,trip_distance,fare_amount,extra,mta_tax,tip_amount,
+                                          tolls_amount,improvement_surcharge,total_amount, payment_type)
+
+# select 13 useful variables in green_pred4
+Green_pred4_new <- green_pred4 %>% select(VendorID,store_and_fwd_flag,RatecodeID,
+                                          passenger_count,trip_distance,fare_amount,extra,mta_tax,tip_amount,
+                                          tolls_amount,improvement_surcharge,total_amount, payment_type)
+
+# rename variable names in all datasets to make consistent, Green_pred2_new, Green_pred3_new, and Green_pred4_new are same
+Green_pred1_new = dplyr::rename(Green_pred1_new,store_and_fwd_flag=Store_and_fwd_flag,passenger_count=Passenger_count,
+                                trip_distance=Trip_distance,fare_amount=Fare_amount,extra=Extra,mta_tax=MTA_tax,tip_amount=Tip_amount,
+                                tolls_amount=Tolls_amount,total_amount = Total_amount, payment_type= Payment_type)
+
+green_prediction <- sdf_bind_rows(Green_pred1_new, Green_pred2_new, Green_pred3_new, Green_pred4_new)
+sdf_dim(green_prediction)  # 3688888 obs and 13 cols
+
+# subset the dataset so that the payment type only contain 1 and 2
+green_prediction <- green_prediction %>% filter(payment_type == 1 | payment_type == 2)
+
+#Train / Test
+partitions_classif <- green_prediction %>%
+  sdf_random_split(training = 0.7, test = 0.3, seed = 1111)
+# get train and test data
+training_classif <- partitions_classif$training
+test_classif <- partitions_classif$test
+
+### 1. logistic regression
+start = proc.time()
+fitlr_logistic_classifi = ml_logistic_regression(training_classif,payment_type~trip_distance+tip_amount)
+fitlr_logistic_classifi
+proc.time() - start
+
+summary(fitlr_logistic_classifi)
+tidy(fitlr_logistic_classifi)
+
+# predictions on testing data
+pred <- ml_predict(fitlr_logistic_classifi, test_classif)
+# check the confusion matrix
+table(pull(pred, label), pull(pred, prediction))
+
+# calucalte statistics
+#ml_binary_classification_evaluator(pred) #area Under ROC curve
+cat("The AUC for the logistic regression is ", ml_binary_classification_evaluator(pred),"\n")
+#ml_multiclass_classification_evaluator(pred, metric_name = "f1") #f1
+cat("The F-1 score for the logistic regression is ", ml_multiclass_classification_evaluator(pred, metric_name = "f1"),"\n")
+#ml_multiclass_classification_evaluator(pred, metric_name = "accuracy") #accuracy
+cat("The accuracy for the logistic regression is ", ml_multiclass_classification_evaluator(pred, metric_name = "accuracy"),"\n")
+#ml_multiclass_classification_evaluator(pred, metric_name = "weightedPrecision") # Precision
+cat("The precision for the logistic regression is ", ml_multiclass_classification_evaluator(pred, metric_name = "weightedPrecision"),"\n")
+#ml_multiclass_classification_evaluator(pred, metric_name = "weightedRecall") # Recall
+cat("The recall for the logistic regression is ", ml_multiclass_classification_evaluator(pred, metric_name = "weightedRecall"),"\n")
+# we get a high F-1 score for the logistic regression model
+
+# 2. multilayer perceptron
+start = proc.time()
+fitml = ml_multilayer_perceptron_classifier(training_classif,payment_type~trip_distance+tip_amount, layers = c(2,3,2))
+fitml
+proc.time() - start
+
+summary(fitml)
+
+# predictions on testing data
+pred_ml <- ml_predict(fitml, test_classif)
+# check the confusion matrix
+table(pull(pred_ml, label), pull(pred_ml, prediction))
+# calucalte statistics
+#ml_binary_classification_evaluator(pred_ml) #area Under ROC curve
+cat("The AUC for the multilayer perceptron classifier is ", ml_binary_classification_evaluator(pred_ml),"\n")
+#ml_multiclass_classification_evaluator(pred_ml, metric_name = "f1") #f1
+cat("The F-1 score for the multilayer perceptron classifier is ", ml_multiclass_classification_evaluator(pred_ml, metric_name = "f1"),"\n")
+#ml_multiclass_classification_evaluator(pred_ml, metric_name = "accuracy") #accuracy
+cat("The accuracy for the multilayer perceptron classifier is ", ml_multiclass_classification_evaluator(pred_ml, metric_name = "accuracy"),"\n")
+#ml_multiclass_classification_evaluator(pred_ml, metric_name = "weightedPrecision") # Precision
+cat("The precision for the multilayer perceptron classifier is ", ml_multiclass_classification_evaluator(pred_ml, metric_name = "weightedPrecision"),"\n")
+#ml_multiclass_classification_evaluator(pred_ml, metric_name = "weightedRecall") # Recall
+cat("The recall for the multilayer perceptron classifier is ", ml_multiclass_classification_evaluator(pred_ml, metric_name = "weightedRecall"),"\n")
+# we get a high F-1 score for the multilayer perceptron classifier as well 
+
+### Finally, we choose MLP classifier as our final model to predict test dataset in Green Test Student Bucket
+pred_green <- ml_predict(fitml, green_test)
+pred_green %>% select(rawPrediction,probability,prediction,predicted_label,probability_1,probability_2)
+# we store the predicted_label column
+
+pred_green_submitted <- pred_green  %>% select(ID,predicted_label)
+# rename the column predicted_label
+pred_green_submitted <- dplyr::rename(pred_green_submitted,payment_type=predicted_label)
+# sort by ID
+pred_green_submitted_final <- sdf_sort(pred_green_submitted,"ID")
+pred_green_submitted_final
+
+# save in a csv file
+write.csv(pred_green_submitted_final,"/home/hadoop/classification_prediction_green.csv", row.names = FALSE)
+```
+
+#Prediction: Regression
+
+```{r, eval=FALSE}
+## read all test data files in the S3 Bucket - Yellow Test Student
+# 2009 March
+Yellow_Test1 = spark_read_csv(sc, path = "s3://stat6306project/Yellow Test Student/TaxiTest2009_WO_df.csv", 
+                              infer_schema = TRUE, header = TRUE, repartition = 100)
+sdf_dim(Yellow_Test1)  # 32863 obs and 18 cols
+
+# 2011 February
+Yellow_Test2 = spark_read_csv(sc, path = "s3://stat6306project/Yellow Test Student/TaxiTest2011_WO_df.csv", 
+                              infer_schema = TRUE, header = TRUE, repartition = 100)
+sdf_dim(Yellow_Test2)  # 61535 obs and 18 cols
+#colnames(Yellow_Test2)
+
+# 2018 March
+Yellow_Test3 = spark_read_csv(sc, path = "s3://stat6306project/Yellow Test Student/TaxiTest2018_WO_df.csv", 
+                              infer_schema = TRUE, header = TRUE, repartition = 100)
+sdf_dim(Yellow_Test3)  # 66530 obs and 17 cols
+#colnames(Yellow_Test3)
+
+# 2020 May
+Yellow_Test4 = spark_read_csv(sc, path = "s3://stat6306project/Yellow Test Student/TaxiTest2020_WO_df.csv", 
+                              infer_schema = TRUE, header = TRUE, repartition = 100)
+sdf_dim(Yellow_Test4)  # 70027 obs and 18 cols
+#colnames(Yellow_Test4)
+
+## Since these 4 data have different variable features, we first subset the data by selecting 11
+## common features that contain in all 4 datasets, and renames variable names. Finally, we merge into 
+## one dataset.
+
+# select 11 useful variables in Yellow_Test1
+Yellow_Test1_new <- Yellow_Test1 %>% select(ID,vendor_name,Passenger_Count,Trip_Distance,
+                                            Rate_Code,store_and_forward,Fare_Amt,surcharge,mta_tax,Tolls_Amt,Payment_Type)
+
+# select 11 useful variables in Yellow_Test2
+Yellow_Test2_new <- Yellow_Test2 %>% select(ID,vendor_id,passenger_count,trip_distance,
+                                            rate_code,store_and_fwd_flag,fare_amount,surcharge,mta_tax,tolls_amount,payment_type)
+
+# select 11 useful variables in Yellow_Test3
+Yellow_Test3_new <- Yellow_Test3 %>% select(ID,VendorID,passenger_count,trip_distance,
+                                            RatecodeID,store_and_fwd_flag,fare_amount,extra,mta_tax,tolls_amount,payment_type)
+
+# select 11 useful variables in Yellow_Test4
+Yellow_Test4_new <- Yellow_Test4 %>% select(ID,VendorID,passenger_count,trip_distance,
+                                            RatecodeID,store_and_fwd_flag,fare_amount,extra,mta_tax,tolls_amount,payment_type)
+
+# rename variable names in all datasets to make consistent
+Yellow_Test1_new = dplyr::rename(Yellow_Test1_new,VendorID=vendor_name,Store_and_Forward=store_and_forward,Extra_surcharge=surcharge,MTA_tax=mta_tax)
+Yellow_Test2_new = dplyr::rename(Yellow_Test2_new,VendorID=vendor_id,Passenger_Count=passenger_count, Trip_Distance = trip_distance,Rate_Code = rate_code,
+                                 Store_and_Forward=store_and_fwd_flag,Fare_Amt=fare_amount,Extra_surcharge=surcharge,MTA_tax=mta_tax,Tolls_Amt=tolls_amount,Payment_Type=payment_type)
+Yellow_Test3_new = dplyr::rename(Yellow_Test3_new,Passenger_Count=passenger_count, Trip_Distance = trip_distance,Rate_Code = RatecodeID,
+                                 Store_and_Forward=store_and_fwd_flag,Fare_Amt=fare_amount,Extra_surcharge=extra,MTA_tax=mta_tax,Tolls_Amt=tolls_amount,Payment_Type=payment_type)
+Yellow_Test4_new = dplyr::rename(Yellow_Test4_new,Passenger_Count=passenger_count, Trip_Distance = trip_distance,Rate_Code = RatecodeID,
+                                 Store_and_Forward=store_and_fwd_flag,Fare_Amt=fare_amount,Extra_surcharge=extra,MTA_tax=mta_tax,Tolls_Amt=tolls_amount,Payment_Type=payment_type)
+
+
+yellow_test <- sdf_bind_rows(Yellow_Test1_new,Yellow_Test2_new,Yellow_Test3_new, Yellow_Test4_new)
+# change payment_type levels
+yellow_test1 <- yellow_test %>% mutate(payment_type = ifelse(Payment_Type == "CRD" | Payment_Type == "Credit", 1,2))
+sdf_dim(yellow_test1)  # 230955 obs and 12 cols
+# We will use this dataset later.
+
+### According to above test dataset, we select four relative datasets to perform regression analysis
+
+yellow_pred1 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2009/yellow_tripdata_2009-03.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_pred2 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/yellow_tripdata_2011-02.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_pred3 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/yellow_tripdata_2018-03.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+yellow_pred4 = spark_read_csv(sc, path = "s3://stat6306studentfilebucket/Jason and Gin/2020_all/yellow_tripdata_2020-05.csv", infer_schema = TRUE, header = TRUE, repartition = 100)
+
+## Similarly, since these 4 data have different variable features, we first subset the data by selecting 12
+## common features that contain in all 4 datasets, and renames variable names. Finally, we merge into 
+## one dataset.
+# select 12 useful variables in yellow_pred1
+yellow_pred1_new <- yellow_pred1 %>% select(vendor_name,Passenger_Count,Trip_Distance,
+                                            Rate_Code,store_and_forward,Fare_Amt,surcharge,mta_tax,Tolls_Amt,Total_Amt,Tip_Amt,Payment_Type)
+
+# select 12 useful variables in yellow_pred2
+yellow_pred2_new <- yellow_pred2 %>% select(vendor_id,passenger_count,trip_distance,
+                                            rate_code,store_and_fwd_flag,fare_amount,surcharge,mta_tax,tolls_amount,total_amount,tip_amount,payment_type)
+
+# select 12 useful variables in yellow_pred3
+yellow_pred3_new <- yellow_pred3 %>% select(VendorID,passenger_count,trip_distance,
+                                            RatecodeID,store_and_fwd_flag,fare_amount,extra,mta_tax,tolls_amount,total_amount,tip_amount,payment_type)
+
+# select 12 useful variables in yellow_pred4
+yellow_pred4_new <- yellow_pred4 %>% select(VendorID,passenger_count,trip_distance,
+                                            RatecodeID,store_and_fwd_flag,fare_amount,extra,mta_tax,tolls_amount,total_amount,tip_amount,payment_type)
+
+# make all variable names consistent
+yellow_pred1_new = dplyr::rename(yellow_pred1_new,VendorID = vendor_name, Store_and_Forward = store_and_forward,Extra_surcharge = surcharge,
+                                 MTA_tax=mta_tax)
+yellow_pred2_new = dplyr::rename(yellow_pred2_new,VendorID = vendor_id, Passenger_Count = passenger_count, Trip_Distance = trip_distance,
+                                 Rate_Code = rate_code, Store_and_Forward = store_and_fwd_flag,Fare_Amt = fare_amount,
+                                 Extra_surcharge = surcharge,MTA_tax=mta_tax,Tolls_Amt = tolls_amount,Total_Amt=total_amount,
+                                 Tip_Amt=tip_amount,Payment_Type=payment_type)
+yellow_pred3_new = dplyr::rename(yellow_pred3_new, Passenger_Count = passenger_count, Trip_Distance = trip_distance,
+                                 Rate_Code = RatecodeID, Store_and_Forward = store_and_fwd_flag,Fare_Amt = fare_amount,
+                                 Extra_surcharge = extra,MTA_tax=mta_tax,Tolls_Amt = tolls_amount,Total_Amt=total_amount,
+                                 Tip_Amt=tip_amount,Payment_Type=payment_type)
+yellow_pred4_new = dplyr::rename(yellow_pred4_new, Passenger_Count = passenger_count, Trip_Distance = trip_distance,
+                                 Rate_Code = RatecodeID, Store_and_Forward = store_and_fwd_flag,Fare_Amt = fare_amount,
+                                 Extra_surcharge = extra,MTA_tax=mta_tax,Tolls_Amt = tolls_amount,Total_Amt=total_amount,
+                                 Tip_Amt=tip_amount,Payment_Type=payment_type)
+
+yellow_prediction = sdf_bind_rows(yellow_pred1_new,yellow_pred2_new,yellow_pred3_new,yellow_pred4_new)
+sdf_dim(yellow_prediction)  # 38368918 obs and 12 cols
+
+# subset the data that only contain Payment_Type = Credit, and make levels consistent
+yellow_prediction1 <- yellow_prediction %>% mutate(PaymentType = ifelse(Payment_Type == "CRD" | Payment_Type == "Credit", 1,2))
+yellow_prediction2 <- yellow_prediction1 %>% filter(PaymentType == 1)
+sdf_dim(yellow_prediction2) # 9377091 obs and 13 cols
+
+#Train / Test
+partitions_regress <- yellow_prediction2 %>%
+  sdf_random_split(training = 0.7, test = 0.3, seed = 1111)
+# get training and testing data
+training_regress <- partitions_regress$training
+test_regress <- partitions_regress$test
+
+## Linear Regression
+# select Trip_Distance ( elapsed trip distance in miles), Fare_Amt (time-and-distance fare) and Extra_surcharge (miscellaneous extras and surcharges) as predictors
+# if we can use (total amount charged to passengers) as predictor, we can get RMSE below 1.25; however, we don't have this variable in the testing data in the Yellow Test Student Bucket folder
+fitlm = ml_linear_regression(training_regress, Tip_Amt~ Trip_Distance + Fare_Amt + Extra_surcharge)
+# LR model summary
+summary(fitlm)
+tidy(fitlm)
+
+# Predict for Test Set to find RMSE
+pred_reg <- ml_predict(fitlm, test_regress)
+
+#Evaluate on Test Set
+MSE_Test = ml_regression_evaluator(pred_reg,label_col = "Tip_Amt", metric_name = "rmse")
+MSE_Test
+# we get a RMSE smaller than 1.59, done!!
+
+### Finally, we use linear regression model to predict test dataset in Yellow Test Student Bucket
+pred_yellow <- ml_predict(fitlm, yellow_test)
+pred_yellow
+
+pred_yellow_submitted <- pred_yellow  %>% select(ID,prediction)
+# rename the column predicted_label
+pred_yellow_submitted <- dplyr::rename(pred_yellow_submitted,tip_amount=prediction)
+# sort by ID
+pred_yellow_submitted_final <- sdf_sort(pred_yellow_submitted,"ID")
+pred_yellow_submitted_final
+
+# save in a csv file
+write.csv(pred_green_submitted_final,"/home/hadoop/classification_prediction_green.csv", row.names = FALSE)
+```

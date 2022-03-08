@@ -1,0 +1,287 @@
+---
+title: "Project1"
+author: "Yichien Chou"
+date: "2020/10/6"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part A
+
+# i.
+```{r rawdata}
+##Data pre processing
+#read data
+CRX <- read.csv("/Users/jason13nn/Desktop/SMU/Fall 2020/ST 6306/project/project1/CRX.csv")
+
+dim(CRX)
+
+CRX$PosNeg <- NULL
+
+#remove "?" in some features
+for(i in 1:(length(CRX))) {
+    CRX[,i] <- as.factor(gsub("?", NA, CRX[,i], fixed = TRUE))
+}
+
+CRX$B1 <- as.numeric(CRX$B1)
+CRX$B2 <- as.numeric(CRX$B2)
+CRX$B3 <- as.numeric(CRX$B3)
+CRX$B4 <- as.numeric(CRX$B4)
+CRX$B5 <- as.numeric(CRX$B5)
+CRX$B6 <- as.numeric(CRX$B6)
+
+#remove all missing values
+CRX <- na.omit(CRX)
+
+str(CRX)
+```
+
+The raw data set contained information about 690 participants and 17 attributes. The response variable was *PosNeg* (or *AccOrrRej*). The authors picked 9 categorical attributes into the model. 
+
+```{r preprocessing}
+#keep categorical features
+CRX.subset <- CRX[,sapply(CRX, is.factor)]
+
+#671 obs remaining
+
+str(CRX.subset)
+```
+
+Since all the features were categorical, we cannot simply build a KNN classifier. The fundamental weakness of KNN was that it did not handle categorical features. Thus, we have to decide how to convert categorical features into numeric scale. For binary features, we can simply transfer them into 0 and 1. On the other hand, covert other multicategorical features in a K-1 dummy binary variables. 
+
+# ii.
+
+The authors did not make the research reproducible. To be reproducible, I would recommend to use *set.seed()* function in R when splitting the training and testing set so that we can generate the same output anytime we run the code. 
+
+# iii.
+Before build a KNN classifier, we covert all the categorical features to binary and dummy variables.
+
+```{r, warning=FALSE}
+#Transform categorical variables into binary and dummy variables
+library(dummies)
+
+CRX.subset$A1 <- ifelse(CRX.subset$A1=="a", 0, 1)
+CRX.subset$A6 <- ifelse(CRX.subset$A6=="f", 0, 1)
+CRX.subset$A7 <- ifelse(CRX.subset$A7=="f", 0, 1)
+CRX.subset$A8 <- ifelse(CRX.subset$A8=="f", 0, 1)
+
+dummy1 <- dummy(CRX.subset$A2)
+dummy2 <- dummy(CRX.subset$A3)
+dummy3 <- dummy(CRX.subset$A4)
+dummy4 <- dummy(CRX.subset$A5)
+dummy5 <- dummy(CRX.subset$A9)
+
+#Combine Dummy Variables 
+dummies <- dummy1
+for(i in 2:5) {
+  dummy_i <- eval(parse(text = paste("dummy", i, sep = "")))
+  dummies <- cbind(dummies, dummy_i)
+}
+
+CRX.subset <- cbind(CRX.subset, dummies)
+CRX.subset <- CRX.subset[,-c(2:5,9)]
+```
+
+Now, we split the data set into training/testing set. We used *set.seed()* for the reproducibility. Training set contains 70% and testing set contains the remaining 30% of data.
+
+```{r}
+#split training/testing set
+set.seed(5)
+splitPerc = 0.7
+
+trainIndices <- sample(1:dim(CRX.subset)[1],round(splitPerc * dim(CRX.subset)[1]))
+train <- CRX.subset[trainIndices,] 
+#483 obs and 10 features (including response)
+test <- CRX.subset[-trainIndices,]
+#207 obs and 10 features (including response)
+```
+
+#1. KNN Classifier
+
+We build two KNN classifiers (k=3,5, respectively). 
+
+```{r}
+##1. KNN 
+library(caret)
+library(class)
+
+#k = 3
+knn.3 <- knn(train[,-5], test[,-5], train$AccOrRej, prob = TRUE, k = 3)
+#k = 5
+knn.5 <- knn(train[,-5], test[,-5], train$AccOrRej, prob = TRUE, k = 5)
+
+#result
+confusionMatrix(table(knn.3,test$AccOrRej))
+confusionMatrix(table(knn.5,test$AccOrRej))
+```
+
+The accuracy of K=3 was 0.7910, and the accuracy of k=5 was 0.8109. On the other hand, the kappa when k=5 was closer to 1 (kappa=0.5776) compared with the kappa when k=3 (kappa=0.6434). Terefore, the KNN classifier when k=5 had the better performance on predicting.
+
+#2. Naive Bayes
+
+
+```{r}
+##2. Naive Bayes
+library(e1071)
+
+#pre-processing
+CRX.subset <- CRX[,sapply(CRX, is.factor)]
+CRX.subset$PosNeg <- NULL
+CRX.subset$B1 <- NULL
+CRX.subset$B5 <- NULL
+for(i in 1:(length(CRX.subset)-1)) {
+    CRX.subset[,i] <- as.factor(gsub("?", NA, CRX.subset[,i], fixed = TRUE))
+}
+CRX.subset <- na.omit(CRX.subset)
+
+#split training/testing set
+set.seed(5)
+splitPerc = 0.7
+trainIndices <- sample(1:dim(CRX.subset)[1],round(splitPerc * dim(CRX.subset)[1]))
+train <- CRX.subset[trainIndices,] 
+test <- CRX.subset[-trainIndices,]
+
+#Naive Bayes Classifier
+CRX.nb <- naiveBayes(train[,-10], train$AccOrRej, laplace = 1)
+nb.result  <- table(predict(CRX.nb,test[,-10]), test$AccOrRej)
+
+library(kableExtra)
+#table 11 (testing set)
+d <- data.frame(Classification = c("Correct","Incorrect"),
+                Number = c(nb.result[1,1]+nb.result[2,2], 
+                           nb.result[1,2]+nb.result[2,1]),
+                Percentage = c((nb.result[1,1]+nb.result[2,2])/sum(nb.result)*100, (nb.result[1,2]+nb.result[2,1])/sum(nb.result)*100))
+kable(d)
+
+#table 12 (training set)
+
+nb.result2  <- table(predict(CRX.nb,train[,-10]), train$AccOrRej)
+
+d2 <- data.frame(Classification = c("Correct","Incorrect"),
+                Number = c(nb.result2[1,1]+nb.result2[2,2], 
+                           nb.result2[1,2]+nb.result2[2,1]),
+                Percentage = c((nb.result2[1,1]+nb.result2[2,2])/sum(nb.result2)*100, (nb.result2[1,2]+nb.result2[2,1])/sum(nb.result2)*100))
+kable(d2)
+```
+
+##Part C
+
+#i.
+Yiyao
+
+#ii.
+Yiao
+
+#iii.
+```{r}
+#split training/testing set
+set.seed(5)
+splitPerc = 0.7
+trainIndices <- sample(1:dim(CRX.subset)[1],round(splitPerc * dim(CRX.subset)[1]))
+train <- CRX.subset[trainIndices,] 
+test <- CRX.subset[-trainIndices,]
+
+#Logistic Regression
+library(caret)
+
+train$AccOrRej <- as.factor(ifelse(train$AccOrRej =="Negative", 0, 1))
+test$AccOrRej <- as.factor(ifelse(test$AccOrRej =="Negative", 0, 1))
+
+CRX.logistic <- glm(AccOrRej ~., data=train, family='binomial', maxit=100)
+summary(CRX.logistic)
+
+#predict
+prob <- predict(CRX.logistic, test, type="response") 
+
+#Find optimal cutoff
+library(InformationValue)
+
+optCutOff <- optimalCutoff(actuals = test$AccOrRej,predictedScores = prob)[1]
+optCutOff
+
+#confusion matrix
+confusionMatrix(actuals = test$AccOrRej,predictedScores = prob,threshold = optCutOff)
+
+#accuracy
+precision(actuals = test$AccOrRej,predictedScores = prob,threshold = optCutOff)
+
+#sensitivity
+sensitivity(test$AccOrRej, prob, threshold = optCutOff)
+
+#specificity
+specificity(test$AccOrRej, prob, threshold = optCutOff)
+```
+
+##Bonus
+
+#a.
+```{r warning=FALSE}
+library(InformationValue)
+
+#read data
+CRX <- read.csv("/Users/jason13nn/Desktop/SMU/Fall 2020/ST 6306/project/project1/CRX.csv")
+
+CRX$PosNeg <- NULL
+
+#remove "?" in some features
+for(i in 1:(length(CRX))) {
+    CRX[,i] <- as.factor(gsub("?", NA, CRX[,i], fixed = TRUE))
+}
+
+CRX$B1 <- as.numeric(CRX$B1)
+CRX$B2 <- as.numeric(CRX$B2)
+CRX$B3 <- as.numeric(CRX$B3)
+CRX$B4 <- as.numeric(CRX$B4)
+CRX$B5 <- as.numeric(CRX$B5)
+CRX$B6 <- as.numeric(CRX$B6)
+
+#See the number of NAs for each variable
+sapply(CRX, function(x) sum(is.na(x)))
+
+#imputation
+library(VIM)
+CRX <- hotdeck(CRX)
+
+dim(CRX)
+
+#split training/testing set
+set.seed(5)
+splitPerc = 0.7
+trainIndices <- sample(1:dim(CRX)[1],round(splitPerc * dim(CRX)[1]))
+train <- CRX[trainIndices,] 
+test <- CRX[-trainIndices,]
+
+##1. knn
+set.seed(40)
+ctrl <- trainControl(method="repeatedcv",repeats = 100) 
+
+knnFit <- train(AccOrRej ~ ., data = train, method = "knn", trControl = ctrl, preProcess = "knnImpute", tuneLength = 10)
+#k=21
+
+# Evaluating
+knnPredict <- predict(knnFit, test)
+#Get the confusion matrix to see accuracy value and other parameter values
+table(knnPredict, test$AccOrRej)
+
+##2. Naive Bayes
+nbFit <- train(AccOrRej ~ ., data = train, method = "naive_bayes", trControl = ctrl)
+
+# Evaluating
+nbPredict <- predict(nbFit, test)
+#Get the confusion matrix to see accuracy value and other parameter values
+table(nbPredict, test$AccOrRej)
+
+##3. Logistic Regression
+lrFit <- train(AccOrRej ~ ., data = train, method = "glm", family = "binomial", trControl = ctrl)
+
+# Evaluating
+lrPredict <- predict(lrFit, test)
+#Get the confusion matrix to see accuracy value and other parameter values
+table(lrPredict, test$AccOrRej)
+```
+
+#b.
+Yiyao
